@@ -6,29 +6,29 @@ import sys
 # Inicialização do Pygame
 pygame.init()
 
-# Configurações iniciais da janela temporária
-TEMP_SCREEN_WIDTH = 800
-TEMP_SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((TEMP_SCREEN_WIDTH, TEMP_SCREEN_HEIGHT))
-pygame.display.set_caption('Simulação de Aprendizagem por Reforço')
-
-# Carregamento da imagem da pista
+# Carregamento da imagem da pista sem converter
 try:
-    track_surface = pygame.image.load('pista.png').convert()
+    track_surface = pygame.image.load('pista.png')
 except FileNotFoundError:
     print("Erro: Arquivo 'pista.png' não encontrado na pasta do jogo.")
     sys.exit()
 
 track_width, track_height = track_surface.get_size()
-track_pixels = pygame.surfarray.array3d(track_surface)
+
+# Definir a altura da área de informações no topo
+INFO_AREA_HEIGHT = 100  # Altura da área de informações no topo
+
+# Ajustar o tamanho da janela para incluir a área de informações
+SCREEN_WIDTH = track_width
+SCREEN_HEIGHT = track_height + INFO_AREA_HEIGHT + 250  # Espaço extra para a área inferior
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+# Agora podemos converter a imagem da pista
+track_surface = track_surface.convert()
 
 # Transpor track_pixels para [altura][largura][3]
+track_pixels = pygame.surfarray.array3d(track_surface)
 track_pixels = np.transpose(track_pixels, (1, 0, 2))
-
-# Ajustar o tamanho da janela para coincidir com o tamanho da pista
-SCREEN_WIDTH = track_width
-SCREEN_HEIGHT = track_height + 200  # Espaço extra para informações
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
 # Atualizar o título da janela
 pygame.display.set_caption('Simulação de Aprendizagem por Reforço')
@@ -36,6 +36,10 @@ pygame.display.set_caption('Simulação de Aprendizagem por Reforço')
 # Variáveis de controle de velocidade e pausa
 game_speed = 1.0
 paused = False
+
+# Cores
+YELLOW = (255, 255, 0)
+OLIVE_GREEN = (107, 142, 35)
 
 # Encontrar a posição da linha de partida (linha azul)
 blue_mask = np.all(track_pixels == [0, 0, 255], axis=2)
@@ -56,6 +60,7 @@ else:
     goal_x = np.mean(goal_positions[:, 1])
     goal_y = np.mean(goal_positions[:, 0])
     goal_position = (goal_x, goal_y)
+
 
 # Classe do Carrinho
 class Car:
@@ -196,7 +201,12 @@ class Car:
             color = (0, 255, 0)  # Verde para carrinhos que chegaram ao fim
         elif not self.alive:
             color = (255, 0, 0)  # Vermelho para carrinhos mortos
-        pygame.draw.circle(screen, color, (int(self.x), int(self.y)), self.size)
+        # Desenhar o carrinho como um círculo
+        pygame.draw.circle(screen, color, (int(self.x), int(self.y) + INFO_AREA_HEIGHT), self.size)
+        # Desenhar uma seta indicando a direção
+        end_x = int(self.x + self.size * 2 * np.cos(self.angle))
+        end_y = int(self.y + self.size * 2 * np.sin(self.angle)) + INFO_AREA_HEIGHT
+        pygame.draw.line(screen, YELLOW, (int(self.x), int(self.y) + INFO_AREA_HEIGHT), (end_x, end_y), 2)
 
 # Funções auxiliares para a evolução genética
 def crossover(parent1, parent2):
@@ -243,20 +253,22 @@ generation_all_reached_goal = None  # Geração em que todos chegaram ao fim
 
 # Carregar fontes
 font = pygame.font.SysFont('Arial', 20)
+font_small = pygame.font.SysFont('Arial', 16)
 
 # Função para desenhar botões
 def draw_button(screen, rect, text):
     pygame.draw.rect(screen, (200, 200, 200), rect)
     pygame.draw.rect(screen, (0, 0, 0), rect, 2)
-    text_surface = font.render(text, True, (0, 0, 0))
+    text_surface = font_small.render(text, True, (0, 0, 0))
     text_rect = text_surface.get_rect(center=rect.center)
     screen.blit(text_surface, text_rect)
 
 # Definir botões
-button_reset = pygame.Rect(SCREEN_WIDTH - 110, 10, 100, 30)
-button_speed_up = pygame.Rect(SCREEN_WIDTH - 330, 10, 60, 30)
-button_speed_down = pygame.Rect(SCREEN_WIDTH - 260, 10, 60, 30)
-button_pause = pygame.Rect(SCREEN_WIDTH - 190, 10, 60, 30)
+BUTTON_Y_OFFSET = INFO_AREA_HEIGHT + track_height + 30
+button_reset = pygame.Rect(900, BUTTON_Y_OFFSET, 100, 30)
+button_speed_up = pygame.Rect(900, BUTTON_Y_OFFSET + 40, 100, 30)
+button_speed_down = pygame.Rect(900, BUTTON_Y_OFFSET + 80, 100, 30)
+button_pause = pygame.Rect(900, BUTTON_Y_OFFSET + 120, 100, 30)
 
 # Variável para controlar o tempo entre gerações
 next_generation_timer = None
@@ -268,9 +280,16 @@ while running:
     dt = clock.tick(60) / 1000.0  # Delta time em segundos
     dt *= game_speed  # Ajustar o delta time com base na velocidade do jogo
 
-    screen.fill((0, 0, 0))
+    # Desenhar o fundo da área superior de informações
+    screen.fill(OLIVE_GREEN, rect=[0, 0, SCREEN_WIDTH, INFO_AREA_HEIGHT])
+
     # Desenhar a pista
-    screen.blit(track_surface, (0, 0))
+    screen.blit(track_surface, (0, INFO_AREA_HEIGHT))
+    # Desenhar a borda amarela ao redor da pista
+    pygame.draw.rect(screen, YELLOW, (0, INFO_AREA_HEIGHT, track_width, track_height), 5)
+
+    # Desenhar o fundo da área inferior
+    screen.fill(OLIVE_GREEN, rect=[0, INFO_AREA_HEIGHT + track_height, SCREEN_WIDTH, SCREEN_HEIGHT - (INFO_AREA_HEIGHT + track_height)])
 
     # Eventos do Pygame
     for event in pygame.event.get():
@@ -319,25 +338,27 @@ while running:
         if reached_goal_cars == population_size and generation_all_reached_goal is None:
             generation_all_reached_goal = generation
 
-        # Exibir informações na tela
-        text = font.render(f'Geração: {generation} | Vivos: {alive_cars} | Mortos: {population_size - alive_cars - reached_goal_cars} | Chegaram ao Fim: {reached_goal_cars}', True, (255, 255, 255))
-        screen.blit(text, (10, track_height + 10))
-
-        # Exibir o recorde
-        record_text = font.render(f'Recorde de Carrinhos que Chegaram ao Final: {best_cars_reached_goal}', True, (255, 215, 0))
-        record_rect = record_text.get_rect(center=(SCREEN_WIDTH // 2, track_height + 40))
-        screen.blit(record_text, record_rect)
-
-        # Exibir a geração em que todos chegaram ao fim
+        # Exibir informações na tela (na área superior)
+        info_y = 10
         if generation_all_reached_goal is not None:
             all_reached_text = font.render(f'Todos os carrinhos chegaram ao fim na geração: {generation_all_reached_goal}', True, (0, 255, 0))
-            all_reached_rect = all_reached_text.get_rect(center=(SCREEN_WIDTH // 2, track_height + 70))
+            all_reached_rect = all_reached_text.get_rect(center=(SCREEN_WIDTH // 2, info_y))
             screen.blit(all_reached_text, all_reached_rect)
+            info_y += 30
+        record_text = font.render(f'Recorde de Carrinhos que Chegaram ao Final: {best_cars_reached_goal}', True, (255, 215, 0))
+        record_rect = record_text.get_rect(center=(SCREEN_WIDTH // 2, info_y))
+        screen.blit(record_text, record_rect)
+        info_y += 30
+
+        # Exibir informações da geração e carrinhos
+        text = font.render(f'Geração: {generation} | Vivos: {alive_cars} | Mortos: {population_size - alive_cars - reached_goal_cars} | Chegaram ao Fim: {reached_goal_cars}', True, (255, 255, 255))
+        text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, info_y))
+        screen.blit(text, text_rect)
 
         # Desenhar os botões
         draw_button(screen, button_reset, 'Reset')
-        draw_button(screen, button_speed_up, '+Veloc')
-        draw_button(screen, button_speed_down, '-Veloc')
+        draw_button(screen, button_speed_up, '+Velocidade')
+        draw_button(screen, button_speed_down, '-Velocidade')
         draw_button(screen, button_pause, 'Pausar' if not paused else 'Continuar')
 
         # Desenhar a rede neural do primeiro carrinho
@@ -346,7 +367,12 @@ while running:
             if not car.sensors:
                 return
 
-            # Desenhar os neurônios e conexões da rede neural
+            # Fundo para a área da rede neural
+            brain_area_rect = pygame.Rect(position[0] - 40, position[1] - 50, 550, 250)
+            pygame.draw.rect(screen, (200, 200, 200), brain_area_rect)
+            pygame.draw.rect(screen, (0, 0, 0), brain_area_rect, 3)
+
+            # Desenhar neurônios e conexões da rede neural
             inputs = car.sensors
             hidden = np.dot(inputs, car.weights_input_hidden) + car.bias_hidden
             hidden_activations = np.tanh(hidden)
@@ -354,9 +380,9 @@ while running:
             output_activations = np.tanh(output)
 
             # Posições dos neurônios
-            input_neurons = [(position[0] + i * 50, position[1]) for i in range(len(inputs))]
-            hidden_neurons = [(position[0] + i * 50, position[1] + 50) for i in range(len(hidden_activations))]
-            output_neurons = [(position[0], position[1] + 100)]
+            input_neurons = [(position[0] + i * 100, position[1]) for i in range(len(inputs))]
+            hidden_neurons = [(position[0] + i * 50, position[1] + 60) for i in range(len(hidden_activations))]
+            output_neurons = [(position[0] + 250, position[1] + 120)]
 
             # Desenhar conexões entrada -> oculto
             for i, (x1, y1) in enumerate(input_neurons):
@@ -377,8 +403,12 @@ while running:
             # Desenhar neurônios de entrada
             for i, (x, y) in enumerate(input_neurons):
                 intensity = int((inputs[i] + 1) / 2 * 255)
-                intensity = max(0, min(255, intensity))  # Garantir que esteja no intervalo [0, 255])
-                pygame.draw.circle(screen, (intensity, intensity, intensity), (x, y), 10)
+                intensity = max(0, min(255, intensity))  # Garantir que esteja no intervalo [0, 255]
+                pygame.draw.circle(screen, (intensity, intensity, intensity), (x, y), 15)
+                # Rótulos dos neurônios de entrada
+                label = font_small.render(f'Entrada {i+1}', True, (0, 0, 0))
+                label_rect = label.get_rect(center=(x, y - 25))
+                screen.blit(label, label_rect)
 
             # Desenhar neurônios ocultos
             for i, (x, y) in enumerate(hidden_neurons):
@@ -390,10 +420,23 @@ while running:
             x, y = output_neurons[0]
             intensity = int((output_activations[0] + 1) / 2 * 255)
             intensity = max(0, min(255, intensity))
-            pygame.draw.circle(screen, (intensity, intensity, intensity), (x, y), 10)
+            pygame.draw.circle(screen, (intensity, intensity, intensity), (x, y), 15)
+
+            # Rótulos das camadas
+            input_label = font_small.render('Entradas', True, (0, 0, 0))
+            input_label_rect = input_label.get_rect(center=(position[0] + 220, position[1] - 40))
+            screen.blit(input_label, input_label_rect)
+
+            hidden_label = font_small.render('Camada Oculta', True, (0, 0, 0))
+            hidden_label_rect = hidden_label.get_rect(center=(position[0] + 225, position[1] + 60))
+            screen.blit(hidden_label, hidden_label_rect)
+
+            output_label = font_small.render('Saída', True, (0, 0, 0))
+            output_label_rect = output_label.get_rect(center=(position[0] + 250, position[1] + 150))
+            screen.blit(output_label, output_label_rect)
 
         if cars:
-            draw_brain(screen, cars[0], (10, track_height + 100))
+            draw_brain(screen, cars[0], (300, INFO_AREA_HEIGHT + track_height + 50))
 
         # Verificar se todos os carrinhos estão mortos ou chegaram ao fim
         if alive_cars == 0:
@@ -441,8 +484,8 @@ while running:
         # Desenhar os botões com texto atualizado
         draw_button(screen, button_pause, 'Continuar')
         draw_button(screen, button_reset, 'Reset')
-        draw_button(screen, button_speed_up, '+Veloc')
-        draw_button(screen, button_speed_down, '-Veloc')
+        draw_button(screen, button_speed_up, '+Velocidade')
+        draw_button(screen, button_speed_down, '-Velocidade')
 
     pygame.display.flip()
 
